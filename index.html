@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<!-- @artifact-start -->
+<title>Pocket Snake</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Snake">
+<meta name="theme-color" content="#1d2419">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: one screen — a handheld "case" holding a monochrome LCD, score strip above, d-pad below on touch devices. */
+  :root {
+    --case: #1d2419;       /* dark olive handset body */
+    --case-hi: #2a3324;    /* raised bezel */
+    --lcd: #b7c99a;        /* backlit LCD ground */
+    --lcd-ink: #2c3a22;    /* LCD pixels */
+    --lcd-ghost: #a6b98a;  /* unlit grid dots */
+    --label: #c9d6b3;      /* printed text on the case */
+    --accent: #e0a43a;     /* amber key / food */
+    --font-display: "Silkscreen", ui-monospace, "SF Mono", Menlo, monospace;
+    --font-body: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--case);
+    color: var(--label);
+    font-family: var(--font-body);
+    overflow: hidden;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+  }
+  .app {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding-block: max(12px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-bottom, 0px));
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  header {
+    width: 100%;
+    max-width: var(--board, 520px);
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  h1 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.35rem;
+    letter-spacing: 0.04em;
+    color: var(--label);
+  }
+  .scores { display: flex; gap: 16px; font-variant-numeric: tabular-nums; }
+  .scores div { display: flex; flex-direction: column; align-items: flex-end; }
+  .scores span {
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    opacity: 0.7;
+  }
+  .scores b { font-family: var(--font-display); font-weight: 400; font-size: 1.1rem; }
+
+  .screen-wrap {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .bezel {
+    position: relative;
+    padding: 10px;
+    background: var(--case-hi);
+    border-radius: 14px;
+    box-shadow: inset 0 2px 0 rgba(255,255,255,0.05), 0 10px 30px rgba(0,0,0,0.35);
+  }
+  canvas {
+    display: block;
+    background: var(--lcd);
+    border-radius: 4px;
+    max-width: 100%;
+  }
+  .overlay {
+    position: absolute;
+    inset: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    text-align: center;
+    color: var(--lcd-ink);
+    background: color-mix(in srgb, var(--lcd) 82%, transparent);
+    border-radius: 4px;
+    padding: 16px;
+  }
+  .overlay h2 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: clamp(1.4rem, 6vw, 2.2rem);
+    text-wrap: balance;
+  }
+  .overlay p { margin: 0; font-size: 0.85rem; line-height: 1.5; max-width: 30ch; }
+  .btn {
+    font: 700 0.95rem var(--font-display);
+    letter-spacing: 0.06em;
+    color: var(--case);
+    background: var(--accent);
+    border: 0;
+    border-radius: 999px;
+    padding: 12px 26px;
+    cursor: pointer;
+    box-shadow: 0 3px 0 #9c6c1c;
+  }
+  .btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #9c6c1c; }
+  .btn:focus-visible, .key:focus-visible, .pause:focus-visible { outline: 3px solid var(--label); outline-offset: 3px; }
+  .hint { font-size: 0.72rem; opacity: 0.8; }
+  .touch .kbd-only { display: none; }
+  .no-touch .touch-only { display: none; }
+
+  .controls {
+    flex: 0 0 auto;
+    display: grid;
+    grid-template-columns: repeat(3, 64px);
+    grid-template-rows: repeat(3, 64px);
+    gap: 6px;
+  }
+  .no-touch .controls { display: none; }
+  .key {
+    border: 0;
+    border-radius: 14px;
+    background: var(--case-hi);
+    color: var(--label);
+    font-size: 1.4rem;
+    box-shadow: 0 4px 0 #11160e;
+    touch-action: none;
+  }
+  .key.pressed, .key:active { transform: translateY(3px); box-shadow: 0 1px 0 #11160e; background: #354030; }
+  .k-up { grid-column: 2; grid-row: 1; }
+  .k-left { grid-column: 1; grid-row: 2; }
+  .k-right { grid-column: 3; grid-row: 2; }
+  .k-down { grid-column: 2; grid-row: 3; }
+  .pause {
+    grid-column: 2; grid-row: 2;
+    border: 0; border-radius: 50%;
+    background: var(--accent); color: var(--case);
+    font: 700 0.6rem var(--font-display);
+    margin: 8px;
+    box-shadow: 0 3px 0 #9c6c1c;
+  }
+  footer { font-size: 0.68rem; opacity: 0.6; text-align: center; }
+  @media (prefers-reduced-motion: reduce) { .btn:active, .key:active { transform: none; } }
+</style>
+<!-- @artifact-head-end -->
+</head>
+<body>
+<!-- @artifact-body-start -->
+<div class="app" id="app">
+  <header>
+    <h1>SNAKE</h1>
+    <div class="scores">
+      <div><span>Score</span><b id="score">0</b></div>
+      <div><span>Best</span><b id="best">0</b></div>
+    </div>
+  </header>
+
+  <div class="screen-wrap" id="screenWrap">
+    <div class="bezel">
+      <canvas id="board" aria-label="Snake game board"></canvas>
+      <div class="overlay" id="overlay">
+        <h2 id="ovTitle">SNAKE</h2>
+        <p id="ovText">
+          <span class="kbd-only">Arrow keys or WASD to steer. Space to pause.</span>
+          <span class="touch-only">Swipe on the screen or use the pad to steer.</span>
+        </p>
+        <button class="btn" id="startBtn" type="button">PLAY</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="controls" aria-label="Direction pad">
+    <button class="key k-up" data-dir="up" type="button" aria-label="Up">▲</button>
+    <button class="key k-left" data-dir="left" type="button" aria-label="Left">◀</button>
+    <button class="pause" id="pauseBtn" type="button" aria-label="Pause">II</button>
+    <button class="key k-right" data-dir="right" type="button" aria-label="Right">▶</button>
+    <button class="key k-down" data-dir="down" type="button" aria-label="Down">▼</button>
+  </div>
+
+  <footer class="kbd-only">←↑→↓ / WASD steer · Space pause · Enter restart</footer>
+</div>
+
+<script>
+(() => {
+  const GRID = 20;               // cells per side
+  const START_SPEED = 7;         // moves per second
+  const MAX_SPEED = 16;
+  const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+  const OPPOSITE = { up: "down", down: "up", left: "right", right: "left" };
+
+  const css = getComputedStyle(document.documentElement);
+  const COLOR = {
+    ink: css.getPropertyValue("--lcd-ink").trim() || "#2c3a22",
+    ghost: css.getPropertyValue("--lcd-ghost").trim() || "#a6b98a",
+    lcd: css.getPropertyValue("--lcd").trim() || "#b7c99a",
+    food: css.getPropertyValue("--accent").trim() || "#e0a43a",
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const canvas = $("board"), ctx = canvas.getContext("2d");
+  const overlay = $("overlay"), ovTitle = $("ovTitle"), ovText = $("ovText");
+  const startBtn = $("startBtn"), scoreEl = $("score"), bestEl = $("best");
+
+  const isTouch = matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
+  document.body.classList.add(isTouch ? "touch" : "no-touch");
+
+  let best = 0;
+  try { best = parseInt(localStorage.getItem("snake.best") || "0", 10) || 0; } catch (e) {}
+  bestEl.textContent = best;
+
+  let snake, dir, queue, food, score, state, lastTick, acc, cell;
+  // state: "ready" | "running" | "paused" | "over"
+
+  function reset() {
+    const mid = Math.floor(GRID / 2);
+    snake = [[mid, mid], [mid - 1, mid], [mid - 2, mid]];
+    dir = "right";
+    queue = [];
+    score = 0;
+    scoreEl.textContent = 0;
+    placeFood();
+  }
+
+  function placeFood() {
+    const free = [];
+    const taken = new Set(snake.map(([x, y]) => x + "," + y));
+    for (let y = 0; y < GRID; y++)
+      for (let x = 0; x < GRID; x++)
+        if (!taken.has(x + "," + y)) free.push([x, y]);
+    food = free.length ? free[Math.floor(Math.random() * free.length)] : null;
+  }
+
+  function speed() { return Math.min(MAX_SPEED, START_SPEED + Math.floor(score / 4)); }
+
+  function steer(d) {
+    if (state === "over") return;     // restart only via button / Enter
+    if (state === "ready") start();
+    if (state === "paused") resume();
+    const last = queue.length ? queue[queue.length - 1] : dir;
+    if (d === last || d === OPPOSITE[last]) return;
+    if (queue.length < 3) queue.push(d);
+  }
+
+  function step() {
+    if (queue.length) dir = queue.shift();
+    const [dx, dy] = DIRS[dir];
+    const head = [snake[0][0] + dx, snake[0][1] + dy];
+    const eating = food && head[0] === food[0] && head[1] === food[1];
+    const body = eating ? snake : snake.slice(0, -1);
+    const hitWall = head[0] < 0 || head[1] < 0 || head[0] >= GRID || head[1] >= GRID;
+    const hitSelf = body.some(([x, y]) => x === head[0] && y === head[1]);
+    if (hitWall || hitSelf) return gameOver();
+    snake.unshift(head);
+    if (eating) {
+      score++;
+      scoreEl.textContent = score;
+      buzz(15);
+      placeFood();
+      if (!food) return gameOver(true);
+    } else {
+      snake.pop();
+    }
+  }
+
+  function gameOver(won) {
+    state = "over";
+    buzz([40, 40, 80]);
+    if (score > best) {
+      best = score;
+      bestEl.textContent = best;
+      try { localStorage.setItem("snake.best", String(best)); } catch (e) {}
+    }
+    showOverlay(won ? "YOU WIN" : "GAME OVER", `Score ${score} · Best ${best}`, "PLAY AGAIN");
+  }
+
+  function showOverlay(title, text, btn) {
+    ovTitle.textContent = title;
+    ovText.textContent = text;
+    startBtn.textContent = btn;
+    overlay.hidden = false;
+    startBtn.focus({ preventScroll: true });
+  }
+
+  function start() {
+    reset();
+    state = "running";
+    overlay.hidden = true;
+    lastTick = performance.now();
+    acc = 0;
+  }
+
+  function pause() {
+    if (state !== "running") return;
+    state = "paused";
+    showOverlay("PAUSED", "Tap resume or press Space.", "RESUME");
+  }
+
+  function resume() {
+    if (state !== "paused") return;
+    state = "running";
+    overlay.hidden = true;
+    lastTick = performance.now();
+    acc = 0;
+  }
+
+  function togglePause() { state === "running" ? pause() : state === "paused" ? resume() : start(); }
+
+  function buzz(p) { try { navigator.vibrate && navigator.vibrate(p); } catch (e) {} }
+
+  // ---- rendering ----
+  function resize() {
+    const wrap = $("screenWrap");
+    const avail = Math.min(wrap.clientWidth, wrap.clientHeight) - 20; // minus bezel padding
+    const px = Math.max(GRID * 8, Math.floor(avail / GRID) * GRID);
+    cell = px / GRID;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.style.width = canvas.style.height = px + "px";
+    canvas.width = canvas.height = Math.round(px * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    document.documentElement.style.setProperty("--board", px + 20 + "px");
+    draw();
+  }
+
+  function pixel(x, y, color, inset) {
+    const i = inset * cell;
+    ctx.fillStyle = color;
+    ctx.fillRect(x * cell + i, y * cell + i, cell - 2 * i, cell - 2 * i);
+  }
+
+  function draw() {
+    if (!snake) return;
+    ctx.fillStyle = COLOR.lcd;
+    ctx.fillRect(0, 0, GRID * cell, GRID * cell);
+    // unlit LCD dots
+    for (let y = 0; y < GRID; y++)
+      for (let x = 0; x < GRID; x++) pixel(x, y, COLOR.ghost, 0.12);
+    // food: a small amber diamond
+    if (food) {
+      const cx = (food[0] + 0.5) * cell, cy = (food[1] + 0.5) * cell, r = cell * 0.38;
+      ctx.fillStyle = COLOR.food;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - r); ctx.lineTo(cx + r, cy); ctx.lineTo(cx, cy + r); ctx.lineTo(cx - r, cy);
+      ctx.closePath(); ctx.fill();
+    }
+    // snake
+    snake.forEach(([x, y], i) => pixel(x, y, COLOR.ink, i === 0 ? 0.02 : 0.08));
+    // eyes on the head
+    const [hx, hy] = snake[0], [dx, dy] = DIRS[dir];
+    ctx.fillStyle = COLOR.lcd;
+    const e = cell * 0.14, cx = (hx + 0.5) * cell, cy = (hy + 0.5) * cell;
+    const ox = dy !== 0 ? cell * 0.2 : 0, oy = dx !== 0 ? cell * 0.2 : 0;
+    const fx = dx * cell * 0.15, fy = dy * cell * 0.15;
+    ctx.fillRect(cx + fx - ox - e / 2, cy + fy - oy - e / 2, e, e);
+    ctx.fillRect(cx + fx + ox - e / 2, cy + fy + oy - e / 2, e, e);
+  }
+
+  function loop(now) {
+    if (state === "running") {
+      acc += now - lastTick;
+      lastTick = now;
+      const interval = 1000 / speed();
+      let guard = 0;
+      while (acc >= interval && state === "running" && guard++ < 5) {
+        acc -= interval;
+        step();
+      }
+    }
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  // ---- input: keyboard ----
+  const KEYMAP = {
+    ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right",
+    w: "up", s: "down", a: "left", d: "right", W: "up", S: "down", A: "left", D: "right",
+  };
+  window.addEventListener("keydown", (ev) => {
+    if (KEYMAP[ev.key]) { ev.preventDefault(); steer(KEYMAP[ev.key]); }
+    else if (ev.key === " " || ev.key === "p" || ev.key === "P" || ev.key === "Escape") {
+      ev.preventDefault(); togglePause();
+    } else if (ev.key === "Enter" && state !== "running") {
+      ev.preventDefault(); state === "paused" ? resume() : start();
+    }
+  });
+
+  // ---- input: swipe anywhere on the screen area ----
+  let touchStart = null;
+  const SWIPE_MIN = 18;
+  $("screenWrap").addEventListener("touchstart", (ev) => {
+    const t = ev.touches[0];
+    touchStart = { x: t.clientX, y: t.clientY };
+  }, { passive: true });
+  $("screenWrap").addEventListener("touchmove", (ev) => {
+    if (!touchStart) return;
+    ev.preventDefault();
+    const t = ev.touches[0];
+    const dx = t.clientX - touchStart.x, dy = t.clientY - touchStart.y;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < SWIPE_MIN) return;
+    if (state === "running") steer(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up"));
+    touchStart = { x: t.clientX, y: t.clientY }; // allow chained swipes without lifting
+  }, { passive: false });
+  $("screenWrap").addEventListener("touchend", () => { touchStart = null; });
+
+  // ---- input: d-pad (fires on press, not release, for responsiveness) ----
+  document.querySelectorAll(".key").forEach((btn) => {
+    btn.addEventListener("pointerdown", (ev) => {
+      ev.preventDefault();
+      btn.classList.add("pressed");
+      steer(btn.dataset.dir);
+    });
+    const up = () => btn.classList.remove("pressed");
+    btn.addEventListener("pointerup", up);
+    btn.addEventListener("pointerleave", up);
+    btn.addEventListener("pointercancel", up);
+  });
+  $("pauseBtn").addEventListener("click", togglePause);
+  startBtn.addEventListener("click", () => (state === "paused" ? resume() : start()));
+
+  // pause when the app goes to the background (switching apps on iPhone, tabs on Mac)
+  document.addEventListener("visibilitychange", () => { if (document.hidden) pause(); });
+  // block double-tap zoom and pinch on iOS Safari
+  document.addEventListener("gesturestart", (ev) => ev.preventDefault());
+  document.addEventListener("dblclick", (ev) => ev.preventDefault());
+
+  window.addEventListener("resize", resize);
+  window.addEventListener("orientationchange", () => setTimeout(resize, 150));
+
+  reset();
+  state = "ready";
+  resize();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(resize);
+  requestAnimationFrame(loop);
+})();
+</script>
+<!-- @artifact-body-end -->
+</body>
+</html>
