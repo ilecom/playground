@@ -29,6 +29,7 @@
     color-scheme: dark;
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   html, body { height: 100%; }
   body {
     margin: 0;
@@ -229,6 +230,7 @@
   const overlay = $("overlay"), ovTitle = $("ovTitle"), ovText = $("ovText");
   const startBtn = $("startBtn"), scoreEl = $("score"), bestEl = $("best");
 
+  const REDUCED_MOTION = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const isTouch = matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
   document.body.classList.add(isTouch ? "touch" : "no-touch");
 
@@ -355,6 +357,13 @@
     ctx.fillRect(x * cell + i, y * cell + i, cell - 2 * i, cell - 2 * i);
   }
 
+  function diamond(cx, cy, r, color) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - r); ctx.lineTo(cx + r, cy); ctx.lineTo(cx, cy + r); ctx.lineTo(cx - r, cy);
+    ctx.closePath(); ctx.fill();
+  }
+
   function draw() {
     if (!snake) return;
     ctx.fillStyle = COLOR.lcd;
@@ -362,13 +371,12 @@
     // unlit LCD dots
     for (let y = 0; y < GRID; y++)
       for (let x = 0; x < GRID; x++) pixel(x, y, COLOR.ghost, 0.12);
-    // food: a small amber diamond
+    // food: a dark-outlined amber diamond that gently pulses so it stands out on the LCD
     if (food) {
-      const cx = (food[0] + 0.5) * cell, cy = (food[1] + 0.5) * cell, r = cell * 0.38;
-      ctx.fillStyle = COLOR.food;
-      ctx.beginPath();
-      ctx.moveTo(cx, cy - r); ctx.lineTo(cx + r, cy); ctx.lineTo(cx, cy + r); ctx.lineTo(cx - r, cy);
-      ctx.closePath(); ctx.fill();
+      const cx = (food[0] + 0.5) * cell, cy = (food[1] + 0.5) * cell;
+      const pulse = REDUCED_MOTION ? 1 : 0.92 + 0.08 * Math.sin(performance.now() / 160);
+      diamond(cx, cy, cell * 0.62 * pulse, COLOR.ink);
+      diamond(cx, cy, cell * 0.40 * pulse, COLOR.food);
     }
     // snake
     snake.forEach(([x, y], i) => pixel(x, y, COLOR.ink, i === 0 ? 0.02 : 0.08));
